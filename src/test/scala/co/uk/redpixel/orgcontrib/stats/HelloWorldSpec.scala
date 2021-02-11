@@ -3,15 +3,6 @@ import munit.CatsEffectSuite
 
 class HelloWorldSpec extends CatsEffectSuite {
 
-  test("ddd") {
-//    val a: Map[String, Int] = fs2.Stream.iterate(1)(_ + 1)
-//      .map(i => "k" -> i).mapAccumulate()
-//      .map(i => i.toString).takeWhile(x => x != "8")
-//      .parEvalMap(10)(s => "")
-
-    assertEquals("a", "a")
-  }
-
 //  test("HelloWorld returns status code 200") {
 //    assertIO(retHelloWorld.map(_.status) ,Status.Ok)
 //  }

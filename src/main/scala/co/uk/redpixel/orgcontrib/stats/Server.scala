@@ -3,7 +3,7 @@ package co.uk.redpixel.orgcontrib.stats
 import cats.effect.{ConcurrentEffect, Timer}
 import cats.syntax.all._
 import co.uk.redpixel.orgcontrib.stats.config.ApplicationConfig
-import co.uk.redpixel.orgcontrib.stats.http.route.{HealthCheck, Contributions}
+import co.uk.redpixel.orgcontrib.stats.http.route.{Contributions, HealthCheck}
 import co.uk.redpixel.orgcontrib.stats.infrastructure.github.GitHubContributorAlg
 import eu.timepit.refined.auto._
 import fs2.Stream
@@ -22,8 +22,8 @@ object ContributionsStatsServer {
       config <- Stream.eval(ApplicationConfig.loadOrThrow[F])
 
       // services
-      client <- BlazeClientBuilder[F](global).stream
-      algebra = GitHubContributorAlg[F](config.github)(client)
+      client  <- BlazeClientBuilder[F](global).stream
+      algebra <- Stream.eval(GitHubContributorAlg[F](config.github)(client).valueOr(terminate()))
 
       // routes
       routes = (Contributions.routes[F](algebra) <+> HealthCheck.routes[F]).orNotFound
@@ -37,4 +37,8 @@ object ContributionsStatsServer {
         .serve
     } yield exitCode
   }.drain
+
+
+  def terminate[A](): Throwable => A = error =>
+    throw error
 }

@@ -1,40 +1,87 @@
 package co.uk.redpixel.orgcontrib.stats.infrastructure.github
 
-import cats.data.OptionT
-import co.uk.redpixel.orgcontrib.stats.algebra.ContributorAlg
-import co.uk.redpixel.orgcontrib.stats.algebra.data.{Contributor, Organisation}
+import cats.data.{EitherT, OptionT}
+import cats.effect.ConcurrentEffect
+import cats.syntax.all._
+import co.uk.redpixel.orgcontrib.stats.algebra.data.{Contributor, Name, Organisation, Total}
+import co.uk.redpixel.orgcontrib.stats.algebra.{BootstrapAlgebraError, ContributorAlg}
 import co.uk.redpixel.orgcontrib.stats.config.GitHubConfig
+import co.uk.redpixel.orgcontrib.stats.infrastructure.github.client.UriBuilder._
+import co.uk.redpixel.orgcontrib.stats.infrastructure.github.client._
+import eu.timepit.refined.auto._
+import eu.timepit.refined.types.all.PosInt
+import eu.timepit.refined.types.string.NonEmptyString
+import io.circe.Json
+import io.circe.generic.auto._
 import org.http4s.Uri
+import org.http4s.circe.CirceEntityCodec._
 import org.http4s.client.Client
 
-import java.net.URL
-
-class GitHubContributorAlg[F[_]](config: GitHubConfig)
-                                (implicit client: Client[F]) extends ContributorAlg[F] {
+class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: NonEmptyString, maxConcurrent: PosInt)
+                                        (client: Client[F])
+                                        (implicit F: ConcurrentEffect[F]) extends ContributorAlg[F] {
 
   def stats(org: Organisation): OptionT[F, Seq[Contributor]] = {
 
-    def listRepositories(org: Organisation) = {
-      val uri = config.apiUrl / ""
+    def getContributorUrls(org: Organisation, page: Page, perPage: PerPage = PerPage.max): OptionT[F, List[String]] = {
+      OptionT {
+        client.expectOption[Json](
+          RequestBuilder.buildWith[F](
+            yieldOrgReposUri
+              .withOrg(org)
+              .withPaginationParams(page, perPage),
+            token
+          ))
+      }
+      .map(_ \\ "contributors_url")
+      .map(_.flatMap(_.asString))
     }
 
-//    println(config.apiUrl.toString)
-//    OptionT.none
-    client.toString + config.toString
-    ???
+    def getContributors(url: String, page: Page, perPage: PerPage = PerPage.max): F[List[GitHubContributor]] = {
+      client.expect[List[GitHubContributor]](
+        RequestBuilder.buildWith[F](
+          UriBuilder(url).withPaginationParams(page, perPage), token
+        )
+      )
+    }
+
+    fs2.Stream.iterate(1)(_ + 1)
+      .map(Page)
+      .evalMap(getContributorUrls(org, _))
+      .takeWhile(_.nonEmpty)
+      .map(fs2.Stream.emits(_)
+        .covary[F]
+        .map(contributorUrl =>
+          fs2.Stream.iterate(1)(_ + 1)
+            .map(Page)
+            .evalMap(getContributors(contributorUrl, _))
+            .takeWhile(_.nonEmpty))
+        .parJoin(maxConcurrent))
+      .map(_
+        .map(_.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
+          stats + (contributor.login -> contributor.contributions))
+        .map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(_.contributions)))
+      .compile
+      .foldMonoid
+
+    OptionT.none
   }
 }
 
 object GitHubContributorAlg {
 
-  def apply[F[_]](config: GitHubConfig)(implicit client: Client[F]) =
-    new GitHubContributorAlg[F](config)
+  def apply[F[_]](config: GitHubConfig)(client: Client[F])
+                 (implicit F: ConcurrentEffect[F]): EitherT[F, BootstrapAlgebraError, GitHubContributorAlg[F]] = {
+    def toUriBuilder: String => UriBuilder = resource =>
+      UriBuilder(resource)
 
-  implicit def urlToHttp4sUri(url: URL) = Uri.unsafeFromString(url.toString)
+    EitherT.fromOptionF(
+      client.expect[Json](RequestBuilder.buildWith[F](Uri.unsafeFromString(config.apiUrl.toString), config.token))
+        .map(_ \\ "organization_repositories_url")
+        .map(_.headOption.flatMap(_.asString)
+          .map(toUriBuilder)
+          .map(new GitHubContributorAlg[F](_, config.token, config.maxConcurrent)(client))),
+      BootstrapAlgebraError("Could not resolve organisation repositories URL")
+    )
+  }
 }
-
-// - define repositories URL
-// - handle not found response
-// - walk throw responses and execute concurrent requests
-// - reduce data to Map
-// - do recursively
