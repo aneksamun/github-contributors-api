@@ -49,22 +49,25 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
       .map(Page)
       .evalMap(getContributorUrls(org, _))
       .takeWhile(_.nonEmpty)
-      .map(fs2.Stream.emits(_)
-        .covary[F]
-        .map(contributorUrl =>
-          fs2.Stream.iterate(1)(_ + 1)
-            .map(Page)
-            .evalMap(getContributors(contributorUrl, _))
-            .takeWhile(_.nonEmpty))
-        .parJoin(maxConcurrent))
-      .map(_
-        .map(_.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
-          stats + (contributor.login -> contributor.contributions))
-        .map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(_.contributions)))
       .compile
       .foldMonoid
-
-    OptionT.none
+      .flatMap(urls => OptionT {
+        fs2.Stream.emits(urls)
+          .covary[F]
+          .map(contributorUrl =>
+            fs2.Stream.iterate(1)(_ + 1)
+              .map(Page)
+              .evalMap(getContributors(contributorUrl, _))
+              .takeWhile(_.nonEmpty))
+          .parJoin(maxConcurrent)
+          .map(_.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
+            stats + (contributor.login -> contributor.contributions))
+            .map(pair => Contributor(pair._1, pair._2)).toSeq
+            .sortBy(_.contributions)
+            .some)
+          .compile
+          .foldMonoid
+      })
   }
 }
 
