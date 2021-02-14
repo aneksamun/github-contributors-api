@@ -23,51 +23,56 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
 
   def stats(org: Organisation): OptionT[F, Seq[Contributor]] = {
 
-    def getContributorUrls(org: Organisation, page: Page, perPage: PerPage = PerPage.max): OptionT[F, List[String]] = {
-      OptionT {
-        client.expectOption[Json](
+    def fetchWhileNonEmpty[M[_], A <: Iterable[_]](f: Page => M[A]): fs2.Stream[M, A] =
+      fs2.Stream.iterate(1)(_ + 1)
+        .map(Page)
+        .evalMap(f)
+        .takeWhile(_.nonEmpty)
+
+    def getContributorUrls(org: Organisation): OptionT[F, List[String]] = {
+      def getContributorUrlsPerPage(page: Page, perPage: PerPage = PerPage.max) =
+        OptionT {
+          client.expectOption[Json](
+            RequestBuilder.buildWith[F](
+              yieldOrgReposUri
+                .withOrg(org)
+                .withPaginationParams(page, perPage),
+              token
+            ))
+        }.map { json =>
+          json \\ "contributors_url" flatMap (_.asString)
+        }
+
+      fetchWhileNonEmpty(getContributorUrlsPerPage(_)).compile.foldMonoid
+    }
+
+    def getContributors(urls: List[String]): F[List[GitHubContributor]] = {
+      def getContributorsPerPage(url: String, page: Page, perPage: PerPage) =
+        client.expect[List[GitHubContributor]](
           RequestBuilder.buildWith[F](
-            yieldOrgReposUri
-              .withOrg(org)
-              .withPaginationParams(page, perPage),
-            token
-          ))
-      }
-      .map(_ \\ "contributors_url")
-      .map(_.flatMap(_.asString))
-    }
-
-    def getContributors(url: String, page: Page, perPage: PerPage = PerPage.max): F[List[GitHubContributor]] = {
-      client.expect[List[GitHubContributor]](
-        RequestBuilder.buildWith[F](
-          UriBuilder(url).withPaginationParams(page, perPage), token
+            UriBuilder(url).withPaginationParams(page, perPage), token
+          )
         )
-      )
+
+      fs2.Stream.emits(urls)
+        .covary[F]
+        .map(contributorUrl =>
+          fetchWhileNonEmpty(getContributorsPerPage(contributorUrl, _, PerPage.max))
+        )
+        .parJoin(maxConcurrent)
+        .compile
+        .foldMonoid
     }
 
-    fs2.Stream.iterate(1)(_ + 1)
-      .map(Page)
-      .evalMap(getContributorUrls(org, _))
-      .takeWhile(_.nonEmpty)
-      .compile
-      .foldMonoid
-      .flatMap(urls => OptionT {
-        fs2.Stream.emits(urls)
-          .covary[F]
-          .map(contributorUrl =>
-            fs2.Stream.iterate(1)(_ + 1)
-              .map(Page)
-              .evalMap(getContributors(contributorUrl, _))
-              .takeWhile(_.nonEmpty))
-          .parJoin(maxConcurrent)
-          .map(_.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
-            stats + (contributor.login -> contributor.contributions))
-            .map(pair => Contributor(pair._1, pair._2)).toSeq
-            .sortBy(_.contributions)
-            .some)
-          .compile
-          .foldMonoid
-      })
+    for {
+      contributorUrls <- getContributorUrls(org)
+      contributors    <- OptionT(getContributors(contributorUrls).map(_.some))
+      stats           =  contributors.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
+        stats + (contributor.login -> contributor.contributions)
+      )
+    } yield {
+      stats.map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(_.contributions)
+    }
   }
 }
 
