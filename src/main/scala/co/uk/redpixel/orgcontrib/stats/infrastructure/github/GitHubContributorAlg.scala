@@ -92,4 +92,7 @@ object GitHubContributorAlg {
       BootstrapAlgebraError("Could not resolve organisation repositories URL")
     )
   }
+
+  def strictOf[F[_]](config: GitHubConfig)(client: Client[F])(implicit F: ConcurrentEffect[F]) =
+    new GitHubContributorAlg(UriBuilder(config.apiUrl.toString), config.token, config.maxConcurrent)(client)
 }

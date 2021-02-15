@@ -2,13 +2,12 @@ package co.uk.redpixel.orgcontrib.stats.it
 
 import cats.effect.IO
 import cats.effect.testing.scalatest.AsyncIOSpec
-import cats.implicits.catsSyntaxFlatMapOps
 import co.uk.redpixel.orgcontrib.stats.http.route.HealthCheck
 import fs2.text.{lines, utf8Decode}
 import io.circe.Json
 import org.http4s.Request
 import org.http4s.implicits._
-import org.scalatest.{GivenWhenThen, stats}
+import org.scalatest.GivenWhenThen
 import org.scalatest.featurespec.AsyncFeatureSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -25,10 +24,10 @@ class HealthCheckSpec extends AsyncFeatureSpec
 
     Scenario("Checking service availability") {
       When("I make health check request")
-      val statusResponse = HealthCheck.routes[IO].orNotFound(Request[IO](uri = uri"/internal/status"))
+      val status = HealthCheck.routes[IO].orNotFound(Request[IO](uri = uri"/internal/status"))
 
       Then("the status should be healthy")
-      statusResponse.>>= {
+      status.flatMap {
         _.body
           .through(utf8Decode)
           .through(lines)

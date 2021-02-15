@@ -21,4 +21,6 @@ package object scalacheck {
 
   def genPerPage: Gen[PerPage] =
     Gen.chooseNum(1, PerPage.max.value).map(PerPage(_))
+
+  def genToken: Gen[String] = Gen.stringOfN(40, Gen.alphaNumChar)
 }
