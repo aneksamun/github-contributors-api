@@ -67,11 +67,13 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
     for {
       contributorUrls <- getContributorUrls(org)
       contributors    <- OptionT(getContributors(contributorUrls).map(_.some))
-      stats           =  contributors.foldLeft(Map.empty[Name, Total])((stats, contributor) =>
-        stats + (contributor.login -> contributor.contributions)
-      )
+      stats           =  contributors.foldLeft(Map.empty[Name, Total])((stats, contributor) => {
+        val current = stats.getOrElse(contributor.login, 0)
+        val updated = current + contributor.contributions
+        stats + (contributor.login -> updated)
+      })
     } yield {
-      stats.map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(_.contributions)
+      stats.map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(- _.contributions)
     }
   }
 }
