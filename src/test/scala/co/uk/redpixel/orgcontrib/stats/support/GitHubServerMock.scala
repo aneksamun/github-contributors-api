@@ -57,13 +57,6 @@ final class GitHubServerMock private(server: WireMockServer) extends AutoCloseab
 
     stubFor(get(urlEqualTo(s"/repos/${organisation.name}/pythonparser/contributors?page=2&per_page=100"))
       .willReturn(ok().withBody("[]")))
-
-    //--diff-io--
-    stubFor(get(urlEqualTo(s"/repos/${organisation.name}/diff-io/contributors?page=1&per_page=100"))
-      .willReturn(ok().withBody(Template.DiffIOContributors.load)))
-
-    stubFor(get(urlEqualTo(s"/repos/${organisation.name}/diff-io/contributors?page=2&per_page=100"))
-      .willReturn(ok().withBody("[]")))
   }
 
   def close(): Unit = server.stop()

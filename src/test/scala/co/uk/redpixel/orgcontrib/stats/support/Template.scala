@@ -1,7 +1,5 @@
 package co.uk.redpixel.orgcontrib.stats.support
 
-import cats.Show
-import cats.syntax.show._
 import co.uk.redpixel.orgcontrib.stats.algebra.data.Organisation
 import enumeratum.values.{StringEnum, StringEnumEntry}
 
@@ -13,7 +11,11 @@ sealed abstract class Template(val value: String) extends StringEnumEntry {
   def of(baseUrl: URL, organisation: Organisation): String =
     load replace("{baseUrl}", baseUrl.toString) replace("{org}", organisation.name)
 
-  def load: String = value.show
+  def load: String = {
+    Using.resource(getClass.getResourceAsStream(s"/templates/$value")) { stream =>
+      Source.fromInputStream(stream).mkString
+    }
+  }
 }
 
 object Template extends StringEnum[Template] {
@@ -24,13 +26,7 @@ object Template extends StringEnum[Template] {
   case object PythonParserContributors extends Template("pythonparser-contributors.json")
   case object SamplesContributors extends Template("samples-contributors.json")
   case object RoslynMLContributors extends Template("RoslynML-contributors.json")
-  case object DiffIOContributors extends Template("diff-io-contributors.json")
 
   def values: IndexedSeq[Template] = findValues
-
-  implicit val showTemplate: Show[Template] = (template: Template) => {
-    Using.resource(getClass.getResourceAsStream(s"/templates/${template.value}")) { stream =>
-      Source.fromInputStream(stream).mkString
-    }
-  }
 }
+
