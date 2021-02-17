@@ -3,6 +3,7 @@ val CirceVersion = "0.13.0"
 val PureConfigVersion = "0.14.0"
 val PureConfigRefinedVersion = "0.9.20"
 val EnumeratumVersion = "1.6.1"
+val ScalaCacheVersion = "0.28.0"
 val WiremockVersion = "2.27.2"
 val ScalaCheckVersion = "1.15.2"
 val ScalaTestScalaCheckVersion = "3.1.0.0-RC2"
@@ -25,6 +26,8 @@ lazy val root = (project in file("."))
       "com.github.pureconfig"  %% "pureconfig"                    % PureConfigVersion,
       "eu.timepit"             %% "refined-pureconfig"            % PureConfigRefinedVersion,
       "com.beachape"           %% "enumeratum"                    % EnumeratumVersion,
+      "com.github.cb372"       %% "scalacache-cats-effect"        % ScalaCacheVersion,
+      "com.github.cb372"       %% "scalacache-caffeine"           % ScalaCacheVersion,
       "org.scalatest"          %% "scalatest"                     % ScalaTestVersion           % Test,
       "org.scalacheck"         %% "scalacheck"                    % ScalaCheckVersion          % Test,
       "org.scalatestplus"      %% "scalatestplus-scalacheck"      % ScalaTestScalaCheckVersion % Test,

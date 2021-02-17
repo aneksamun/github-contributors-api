@@ -16,14 +16,23 @@ import io.circe.generic.auto._
 import org.http4s.Uri
 import org.http4s.circe.CirceEntityCodec._
 import org.http4s.client.Client
+import scalacache.caffeine.CaffeineCache
+import scalacache.{Cache, Mode}
+
+import scala.concurrent.duration.Duration
 
 class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: NonEmptyString, maxConcurrent: PosInt)
+                                        (cacheExpiry: Duration)
                                         (client: Client[F])
-                                        (implicit F: ConcurrentEffect[F]) extends ContributorAlg[F] {
+                                        (implicit
+                                         F: ConcurrentEffect[F],
+                                         C: Cache[Seq[Contributor]],
+                                         M: Mode[F]) extends ContributorAlg[F] {
+  import scalacache._
 
   def stats(org: Organisation): OptionT[F, Seq[Contributor]] = {
 
-    def fetchWhileNonEmpty[M[_], A <: Iterable[_]](f: Page => M[A]): fs2.Stream[M, A] =
+    def fetchWhileNonEmpty[G[_], A <: Iterable[_]](f: Page => G[A]): fs2.Stream[G, A] =
       fs2.Stream.iterate(1)(_ + 1)
         .map(Page)
         .evalMap(f)
@@ -64,24 +73,31 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
         .foldMonoid
     }
 
-    for {
-      contributorUrls <- getContributorUrls(org)
-      contributors    <- OptionT(getContributors(contributorUrls).map(_.some))
-      stats           =  contributors.foldLeft(Map.empty[Name, Total])((stats, contributor) => {
+    def computeStats(contributors: List[GitHubContributor]): Seq[Contributor] = {
+      val figures = contributors.foldLeft(Map.empty[Name, Total])((stats, contributor) => {
         val current = stats.getOrElse(contributor.login, 0)
         val updated = current + contributor.contributions
         stats + (contributor.login -> updated)
       })
-    } yield {
-      stats.map(pair => Contributor(pair._1, pair._2)).toSeq.sortBy(- _.contributions)
+
+      figures.map(pair => Contributor(pair._1, pair._2)).toSeq sortBy (-_.contributions)
     }
+
+    OptionT(get(org.name)) orElse (for {
+      contributorUrls <- getContributorUrls(org)
+      contributors    <- OptionT.liftF(getContributors(contributorUrls))
+      stats           =  computeStats(contributors)
+      _               <- OptionT.liftF(put(org.name)(stats, cacheExpiry.some))
+    } yield stats)
   }
 }
 
 object GitHubContributorAlg {
 
-  def apply[F[_]](config: GitHubConfig)(client: Client[F])
-                 (implicit F: ConcurrentEffect[F]): EitherT[F, BootstrapAlgebraError, GitHubContributorAlg[F]] = {
+  private implicit val statsCache = CaffeineCache[Seq[Contributor]]
+
+  def apply[F[_]](config: GitHubConfig)(cacheExpiry: Duration)(client: Client[F])
+                 (implicit F: ConcurrentEffect[F], M: Mode[F]): EitherT[F, BootstrapAlgebraError, GitHubContributorAlg[F]] = {
     def toUriBuilder: String => UriBuilder = resource =>
       UriBuilder(resource)
 
@@ -90,11 +106,11 @@ object GitHubContributorAlg {
         .map(_ \\ "organization_repositories_url")
         .map(_.headOption.flatMap(_.asString)
           .map(toUriBuilder)
-          .map(new GitHubContributorAlg[F](_, config.token, config.maxConcurrent)(client))),
+          .map(new GitHubContributorAlg[F](_, config.token, config.maxConcurrent)(cacheExpiry)(client))),
       BootstrapAlgebraError("Could not resolve organisation repositories URL")
     )
   }
 
-  def strictOf[F[_]](config: GitHubConfig)(client: Client[F])(implicit F: ConcurrentEffect[F]) =
-    new GitHubContributorAlg(UriBuilder(config.apiUrl.toString), config.token, config.maxConcurrent)(client)
+  def strictOf[F[_] : ConcurrentEffect : Mode](config: GitHubConfig)(cacheExpiry: Duration)(client: Client[F]) =
+    new GitHubContributorAlg(UriBuilder(config.apiUrl.toString), config.token, config.maxConcurrent)(cacheExpiry)(client)
 }

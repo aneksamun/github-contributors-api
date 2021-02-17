@@ -18,7 +18,7 @@ trait FakeGitHubServer extends BeforeAndAfterAll {
 
 object FakeGitHubServer {
 
-  def config(mock: GitHubServerMock, maxConcurrent: Int = 5) = {
+  def config(mock: GitHubServerMock, maxConcurrent: Int = 10) = {
     GitHubConfig(
       new URL(s"${mock.baseUrl}/orgs/{org}/repos"),
       Refined.unsafeApply(mock.token),

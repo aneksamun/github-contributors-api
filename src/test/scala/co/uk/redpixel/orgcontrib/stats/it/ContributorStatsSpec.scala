@@ -13,12 +13,14 @@ import org.http4s.implicits.http4sKleisliResponseSyntaxOptionT
 import org.http4s.{Request, Uri}
 import org.scalatest.featurespec.AsyncFeatureSpec
 import org.scalatest.matchers.should.Matchers
-import org.scalatest.{EitherValues, GivenWhenThen}
+import org.scalatest.GivenWhenThen
+import scalacache.CatsEffect.modes.async
+
+import scala.concurrent.duration.DurationInt
 
 class ContributorStatsSpec extends AsyncFeatureSpec
   with FakeGitHubServer
   with HttpClient
-  with EitherValues
   with GivenWhenThen
   with Matchers {
 
@@ -30,7 +32,7 @@ class ContributorStatsSpec extends AsyncFeatureSpec
 
     Scenario("Listing top contributors") {
       Given("an algebra")
-      val algebra = GitHubContributorAlg.strictOf(config(serverMock))(client)
+      val algebra = GitHubContributorAlg.strictOf(config(serverMock))(cacheExpiry = 5 seconds)(client)
 
       When(s"I make request to view a ${GumtreeDiff.name} contributors")
       serverMock.configure(GumtreeDiff)
