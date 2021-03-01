@@ -52,6 +52,7 @@ Once service is running use an address http://localhost:8080/org/{org_name}/cont
 
 ### Technology stack
 - [scala 2.13.4](http://www.scala-lang.org/) as the main application programming language
+- [http4s](https://http4s.org/) typeful, functional, streaming HTTP for Scala
 - [cats](http://typelevel.org/cats/) to write more functional and less boilerplate code
 - [cats-effect](https://github.com/typelevel/cats-effect) The Haskell IO monad for Scala
 - [pureconfig](https://pureconfig.github.io/) for loading configuration files
