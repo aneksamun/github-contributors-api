@@ -48,7 +48,7 @@ sbt run
 ```
 Once service is running use an address http://localhost:8080/org/{org_name}/contributors where `{org_name}` is some organisation name.   
 
-## Technology stack
+### Technology stack
 - [scala 2.13.4](http://www.scala-lang.org/) as the main application programming language
 - [cats](http://typelevel.org/cats/) to write more functional and less boilerplate code
 - [cats-effect](https://github.com/typelevel/cats-effect) The Haskell IO monad for Scala
