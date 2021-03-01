@@ -12,12 +12,12 @@ class UriBuilderSpec extends AnyWordSpec
   "The URI builder" should {
     "successfully format an URL" in {
       forAll(genOrganisation, genPage, genPerPage) { (org, page, perPage) =>
-        val url = UriBuilder("{baseUrl}/orgs/{org}/repos{?type,page,per_page,sort}")
+        val url = UriBuilder("https://api.github.com/orgs/{org}/repos{?type,page,per_page,sort}")
           .withOrg(org)
           .withPaginationParams(page, perPage)
           .create.toString
 
-        url should be(s"{baseUrl}/orgs/${org.name}/repos?page=${page.value}&per_page=${perPage.value}")
+        url should be(s"https://api.github.com/orgs/${org.name}/repos?page=${page.value}&per_page=${perPage.value}")
       }
     }
   }
