@@ -1,4 +1,4 @@
-# GitHub Contributors API
+# GitHub Contributors API 🐱
 
 ![Build status](https://github.com/aneksamun/github-contributors-api/actions/workflows/scala.yml/badge.svg)
 
