@@ -27,7 +27,7 @@ Given organisation calculates the top contributors by counting thier total contr
 sbt compile
 ```
 ### How to run locally?
-An API is built on top of [GitHub REST API v3](https://developer.github.com/v3/). First you must [create a personal access token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) if you do not have one and assign it to environment variable with the name **GH_TOKEN**. The complete list of variables can be found in table 1.   
+An API is built on top of [GitHub REST API v3](https://developer.github.com/v3/). First you must [create a personal access token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) if you do not have one and assign it to environment variable with the name **GH_TOKEN**. The complete list of variables can be found in table.   
 
 **Table 1**: The list of available variables.
 |Variable name         |Description                            |Required|Default                |
