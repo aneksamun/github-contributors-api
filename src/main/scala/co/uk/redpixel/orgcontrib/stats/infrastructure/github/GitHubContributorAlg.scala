@@ -13,6 +13,7 @@ import eu.timepit.refined.types.all.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
 import io.circe.Json
 import io.circe.generic.auto._
+import monix.catnap.CircuitBreaker
 import org.http4s.Uri
 import org.http4s.circe.CirceEntityCodec._
 import org.http4s.client.Client
@@ -22,8 +23,8 @@ import scalacache.{Cache, Mode}
 import scala.concurrent.duration.Duration
 
 class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: NonEmptyString, maxConcurrent: PosInt)
+                                        (client: Client[F], circuitBreaker: CircuitBreaker[F])
                                         (cacheExpiry: Duration)
-                                        (client: Client[F])
                                         (implicit
                                          F: ConcurrentEffect[F],
                                          C: Cache[Seq[Contributor]],
@@ -41,13 +42,14 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
     def getContributorUrls(org: Organisation): OptionT[F, List[String]] = {
       def getContributorUrlsPerPage(page: Page, perPage: PerPage = PerPage.max) =
         OptionT {
-          client.expectOption[Json](
-            RequestBuilder.buildWith[F](
-              yieldOrgReposUri
-                .withOrg(org)
-                .withPaginationParams(page, perPage),
-              token
-            ))
+          circuitBreaker.protect(
+            client.expectOption[Json](
+              RequestBuilder.buildWith[F](
+                yieldOrgReposUri
+                  .withOrg(org)
+                  .withPaginationParams(page, perPage),
+                token
+              )))
         }.map { json =>
           json \\ "contributors_url" flatMap (_.asString)
         }
@@ -57,9 +59,9 @@ class GitHubContributorAlg[F[_]] private(yieldOrgReposUri: UriBuilder, token: No
 
     def getContributors(urls: List[String]): F[List[GitHubContributor]] = {
       def getContributorsPerPage(url: String, page: Page, perPage: PerPage) =
-        client.expect[List[GitHubContributor]](
-          RequestBuilder.buildWith[F](
-            UriBuilder(url).withPaginationParams(page, perPage), token
+        circuitBreaker.protect(
+          client.expect[List[GitHubContributor]](
+            RequestBuilder.buildWith[F](UriBuilder(url).withPaginationParams(page, perPage), token)
           )
         )
 
@@ -96,7 +98,7 @@ object GitHubContributorAlg {
 
   private implicit val statsCache = CaffeineCache[Seq[Contributor]]
 
-  def apply[F[_]](config: GitHubConfig)(cacheExpiry: Duration)(client: Client[F])
+  def apply[F[_]](config: GitHubConfig)(cacheExpiry: Duration)(client: Client[F], fuse: CircuitBreaker[F])
                  (implicit F: ConcurrentEffect[F], M: Mode[F]): EitherT[F, BootstrapAlgebraError, GitHubContributorAlg[F]] = {
     def toUriBuilder: String => UriBuilder = resource =>
       UriBuilder(resource)
@@ -106,11 +108,12 @@ object GitHubContributorAlg {
         .map(_ \\ "organization_repositories_url")
         .map(_.headOption.flatMap(_.asString)
           .map(toUriBuilder)
-          .map(new GitHubContributorAlg[F](_, config.token, config.maxConcurrent)(cacheExpiry)(client))),
+          .map(new GitHubContributorAlg[F](_, config.token, config.maxConcurrent)(client, fuse)(cacheExpiry))),
       BootstrapAlgebraError("Could not resolve organisation repositories URL")
     )
   }
 
-  def strictOf[F[_] : ConcurrentEffect : Mode](config: GitHubConfig)(cacheExpiry: Duration)(client: Client[F]) =
-    new GitHubContributorAlg(UriBuilder(config.apiUrl.toString), config.token, config.maxConcurrent)(cacheExpiry)(client)
+  def strictOf[F[_] : ConcurrentEffect : Mode](config: GitHubConfig)(cacheExpiry: Duration)
+                                              (client: Client[F], fuse: CircuitBreaker[F]) =
+    new GitHubContributorAlg(UriBuilder(config.apiUrl.toString), config.token, config.maxConcurrent)(client, fuse)(cacheExpiry)
 }

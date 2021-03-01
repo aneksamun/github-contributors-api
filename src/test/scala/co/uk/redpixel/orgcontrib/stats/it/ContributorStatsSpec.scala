@@ -8,6 +8,7 @@ import co.uk.redpixel.orgcontrib.stats.support.Organisations.GumtreeDiff
 import co.uk.redpixel.orgcontrib.stats.support.fixture.FakeGitHubServer._
 import co.uk.redpixel.orgcontrib.stats.support.fixture.{FakeGitHubServer, HttpClient}
 import io.circe.generic.auto._
+import monix.catnap.CircuitBreaker
 import org.http4s.circe.CirceEntityCodec.circeEntityDecoder
 import org.http4s.implicits.http4sKleisliResponseSyntaxOptionT
 import org.http4s.{Request, Uri}
@@ -32,7 +33,8 @@ class ContributorStatsSpec extends AsyncFeatureSpec
 
     Scenario("Listing top contributors") {
       Given("an algebra")
-      val algebra = GitHubContributorAlg.strictOf(config(serverMock))(cacheExpiry = 5 seconds)(client)
+      val circuitBreaker = CircuitBreaker[IO].unsafe(maxFailures = 10, resetTimeout = 1 second)
+      val algebra = GitHubContributorAlg.strictOf(config(serverMock))(cacheExpiry = 5 seconds)(client, circuitBreaker)
 
       When(s"I make request to view a ${GumtreeDiff.name} contributors")
       serverMock.configure(GumtreeDiff)

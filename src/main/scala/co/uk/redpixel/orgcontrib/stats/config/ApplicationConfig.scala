@@ -4,7 +4,9 @@ import cats.Applicative
 import com.typesafe.config.ConfigFactory
 import pureconfig.syntax.ConfigReaderOps
 
-final case class ApplicationConfig(server: ServerConfig, github: GitHubConfig)
+final case class ApplicationConfig(server: ServerConfig,
+                                   github: GitHubConfig,
+                                   circuitBreaker: CircuitBreakerConfig)
 
 object ApplicationConfig {
   import pureconfig.generic.auto._

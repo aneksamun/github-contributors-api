@@ -7,6 +7,7 @@ import co.uk.redpixel.orgcontrib.stats.http.route.{Contributions, HealthCheck}
 import co.uk.redpixel.orgcontrib.stats.infrastructure.github.GitHubContributorAlg
 import eu.timepit.refined.auto._
 import fs2.Stream
+import monix.catnap.CircuitBreaker
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.implicits._
 import org.http4s.server.blaze.BlazeServerBuilder
@@ -25,7 +26,8 @@ object ContributionsStatsServer {
 
       // services
       client  <- BlazeClientBuilder[F](global).withIdleTimeout(config.server.clientTimeout).stream
-      algebra <- Stream.eval(GitHubContributorAlg[F](config.github)(config.server.cacheExpiry)(client).valueOr(terminate()))
+      breaker <- Stream.eval(CircuitBreaker.of[F](config.circuitBreaker.maxFailures, config.circuitBreaker.resetTimeout))
+      algebra <- Stream.eval(GitHubContributorAlg[F](config.github)(config.server.cacheExpiry)(client, breaker).valueOr(terminate()))
 
       // routes
       routes = (Contributions.routes[F](algebra) <+> HealthCheck.routes[F]).orNotFound
