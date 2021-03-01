@@ -1,5 +1,7 @@
 # GitHub Contributors API
 
+![Build status](https://github.com/aneksamun/github-contributors-api/actions/workflows/scala.yml/badge.svg)
+
 Given organisation calculates the top contributors by counting thier total contributions over the repositories. The contributors are sorted in descending order to have most active on top.
 
 ```
